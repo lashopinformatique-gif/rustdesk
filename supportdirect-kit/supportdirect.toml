@@ -1,0 +1,54 @@
+# ============================================================
+#  Configuration de personnalisation du client SupportDirect
+#  (lue par rebrand.py)
+# ============================================================
+
+[app]
+# Nom INTERNE : lettres/chiffres/-/_ uniquement (sans accent).
+# Utilisé pour le dossier d'installation, le service Windows,
+# le registre, l'extension de fichier .supportdirect, le titre de fenêtre.
+name = "SupportDirect"
+
+# Nom AFFICHÉ dans les textes de l'interface (accents autorisés).
+display_name = "SupportDirect"
+
+# Votre nom de commerce (apparaît dans les propriétés du .exe
+# et dans la ligne "copyright").
+company = "La Shop Informatique"
+
+# Description courte (propriétés du .exe)
+description = "SupportDirect - Assistance à distance"
+
+[branding]
+# Icône carrée (PNG, idéalement 1024x1024, fond transparent).
+icon = "branding/icon.png"
+# Logo horizontal affiché sur l'écran d'accueil (PNG, max 300x60, optionnel).
+# Laisser vide ("") pour ne pas en mettre.
+logo = "branding/logo.png"
+# Variantes optionnelles du logo pour le thème clair / sombre.
+logo_light = "branding/logo_light.png"
+logo_dark = "branding/logo_dark.png"
+# Logo de l'entreprise affiché dans la page "À propos" (PNG, optionnel).
+company_logo = "branding/company_logo.png"
+
+[server]
+# Adresse de VOTRE serveur SupportDirect (IP publique ou nom de domaine).
+# Les clients s'y connecteront automatiquement, sans rien configurer.
+host = "supportdirect.example.com"
+# Clé publique du serveur : contenu du fichier id_ed25519.pub généré
+# par hbbs au premier démarrage (voir server/README.md).
+key = "COLLEZ_ICI_LA_CLE_PUBLIQUE"
+
+[legal]
+# Bloc affiché dans la page "À propos", à droite du logo de l'entreprise.
+# L'année est insérée automatiquement dans "copyright" via {year}.
+copyright = "© {year} La Shop Informatique. Tous droits réservés."
+
+notice = """SupportDirect est la solution d'assistance à distance de La Shop Informatique. Le nom « SupportDirect », le nom et le logo « La Shop Informatique », l'identité visuelle, les icônes, l'infrastructure serveur et la documentation qui l'accompagnent sont la propriété exclusive de La Shop Informatique et sont protégés par la Loi sur le droit d'auteur (Canada), la Loi sur les marques de commerce (Canada) et les traités internationaux. Toute reproduction ou utilisation de ces marques et éléments graphiques, en tout ou en partie, sans l'autorisation écrite préalable de La Shop Informatique, est strictement interdite et expose son auteur à des poursuites civiles et pénales. Ce logiciel est destiné à l'assistance des clients de La Shop Informatique ; son infrastructure n'est ni vendue ni concédée sous licence à des tiers, et toute connexion non autorisée au serveur SupportDirect est interdite."""
+
+third_party = """Composants tiers utilisés sous leurs licences respectives : RustDesk (© Purslane Tech Pte. Ltd., AGPL-3.0 — SupportDirect en est une version dérivée ; le code source modifié est disponible à l'adresse ci-dessous), Flutter (BSD-3), Rust et ses bibliothèques (MIT/Apache-2.0), FFmpeg (LGPL/GPL), libvpx (BSD). Ces licences ne s'étendent pas aux marques ni aux éléments graphiques de La Shop Informatique."""
+
+# Lien vers vos sources modifiées (obligation AGPL) : l'adresse de votre fork GitHub.
+source_url = "https://github.com/lashopinformatique-gif/rustdesk"
+# Site de l'entreprise (lien "Site web" dans À propos ; vide = lien RustDesk conservé).
+website = ""

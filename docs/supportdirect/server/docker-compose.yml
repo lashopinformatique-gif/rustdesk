@@ -1,0 +1,40 @@
+# ============================================================
+#  Serveur SupportDirect (RustDesk Server OSS : hbbs = annuaire, hbbr = relais)
+#
+#  1. Remplacez SUPPORTDIRECT_HOST par l'IP publique ou le domaine du VPS.
+#  2. docker compose up -d
+#  3. Récupérez la clé publique : cat data/id_ed25519.pub
+#     -> à coller dans supportdirect-kit/supportdirect.toml (server.key)
+#
+#  Pare-feu à ouvrir : TCP 21115-21117, UDP 21116
+#  (21118/21119 = client web, laissez FERMÉ sauf besoin précis)
+# ============================================================
+services:
+  hbbs:
+    container_name: supportdirect-hbbs
+    image: rustdesk/rustdesk-server:latest
+    # -r : adresse du relais annoncée aux clients
+    # -k _ : n'accepte QUE les clients qui ont la bonne clé publique
+    #        (empêche des inconnus d'utiliser votre serveur)
+    command: hbbs -r ${SUPPORTDIRECT_HOST}:21117 -k _
+    environment:
+      - SUPPORTDIRECT_HOST=${SUPPORTDIRECT_HOST:-supportdirect.example.com}
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21116:21116/udp"
+    volumes:
+      - ./data:/root
+    depends_on:
+      - hbbr
+    restart: unless-stopped
+
+  hbbr:
+    container_name: supportdirect-hbbr
+    image: rustdesk/rustdesk-server:latest
+    command: hbbr -k _
+    ports:
+      - "21117:21117"
+    volumes:
+      - ./data:/root
+    restart: unless-stopped
