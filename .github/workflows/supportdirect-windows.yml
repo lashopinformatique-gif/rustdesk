@@ -14,6 +14,9 @@ on:
   push:
     tags: ["supportdirect-*"]
 
+permissions:
+  contents: write
+
 env:
   SCITER_RUST_VERSION: "1.75"
   LLVM_VERSION: "15.0.6"
@@ -197,6 +200,10 @@ jobs:
           mv $msi.FullName "../../Output/$env:OUTPUT_NAME-$env:VERSION-x86_64.msi"
           popd
 
+      - name: Write SHA256SUMS
+        shell: bash
+        run: cd ./Output && sha256sum *.exe *.msi > SHA256SUMS.txt && cat SHA256SUMS.txt
+
       - name: Upload SupportDirect installers
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -208,4 +215,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/supportdirect-')
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
+          name: SupportDirect ${{ env.VERSION }}
           files: ./Output/*
