@@ -133,6 +133,17 @@ def patch_runner_rc(repo: Path, cfg: dict) -> None:
     p.write_text(t, encoding="utf-8")
     print("  Runner.rc            OK  (propriétés du .exe)")
 
+    # Enveloppe auto-extractible (installeur) : mêmes propriétés
+    p = repo / "libs/portable/Cargo.toml"
+    t = p.read_text(encoding="utf-8")
+    for k, v in (("LegalCopyright", repl["LegalCopyright"]),
+                 ("ProductName", repl["ProductName"]),
+                 ("FileDescription", repl["FileDescription"])):
+        v = v.replace('"', "'")
+        t = sub_once(t, rf'^{k} = ".*"$', f'{k} = "{v}"', f"portable {k}")
+    p.write_text(t, encoding="utf-8")
+    print("  portable/Cargo.toml  OK  (propriétés de l'installeur)")
+
 
 # ---------------------------------------------------------------- icônes
 def _square(img: Image.Image) -> Image.Image:
