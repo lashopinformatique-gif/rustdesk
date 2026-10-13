@@ -34,7 +34,7 @@ company_logo = "branding/company_logo.png"
 [server]
 # Adresse de VOTRE serveur SupportDirect (IP publique ou nom de domaine).
 # Les clients s'y connecteront automatiquement, sans rien configurer.
-host = "supportdirect.example.com"
+host = "gestion.lashop.tech"
 # Clé publique du serveur : contenu du fichier id_ed25519.pub généré
 # par hbbs au premier démarrage (voir server/README.md).
 key = "COLLEZ_ICI_LA_CLE_PUBLIQUE"
