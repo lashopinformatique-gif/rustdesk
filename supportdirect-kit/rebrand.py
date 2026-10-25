@@ -126,6 +126,8 @@ def patch_runner_rc(repo: Path, cfg: dict) -> None:
         "FileDescription": a["description"],
         "ProductName": a["display_name"],
         "LegalCopyright": f"Copyright © {a['company']}. Logiciel dérivé de RustDesk (AGPL-3.0).",
+        # Le workflow renomme le binaire compilé en <name>.exe avant l'empaquetage.
+        "OriginalFilename": f"{a['name']}.exe",
     }
     for k, v in repl.items():
         v = v.replace('"', "'")
@@ -138,7 +140,8 @@ def patch_runner_rc(repo: Path, cfg: dict) -> None:
     t = p.read_text(encoding="utf-8")
     for k, v in (("LegalCopyright", repl["LegalCopyright"]),
                  ("ProductName", repl["ProductName"]),
-                 ("FileDescription", repl["FileDescription"])):
+                 ("FileDescription", repl["FileDescription"]),
+                 ("OriginalFilename", repl["OriginalFilename"])):
         v = v.replace('"', "'")
         t = sub_once(t, rf'^{k} = ".*"$', f'{k} = "{v}"', f"portable {k}")
     p.write_text(t, encoding="utf-8")

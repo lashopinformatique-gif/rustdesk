@@ -23,7 +23,7 @@ env:
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  VERSION: "1.5.2"
+  VERSION: "1.5.3"
   # Nom de fichier des installeurs produits (sans accent)
   OUTPUT_NAME: "SupportDirect"
 
@@ -171,13 +171,26 @@ jobs:
           name: topmostwindow-artifacts-x64
           path: "./rustdesk"
 
+      # Flutter compile toujours le binaire sous le nom rustdesk.exe, mais
+      # l'installation (raccourcis, service Windows, registre, pare-feu) et la
+      # détection « déjà installé » attendent <app.name>.exe. Sans ce renommage,
+      # le raccourci du bureau pointe vers un fichier qui n'existe pas et
+      # l'application se croit toujours en mode portable.
+      - name: Rename executable to the app name
+        shell: bash
+        run: |
+          app_name=$(sed -n 's/^name *= *"\([^"]*\)".*/\1/p' supportdirect-kit/supportdirect.toml | head -1)
+          test -n "$app_name"
+          mv ./rustdesk/rustdesk.exe "./rustdesk/${app_name}.exe"
+          echo "APP_NAME=${app_name}" >> "$GITHUB_ENV"
+
       - name: Build self-extracted installer (.exe)
         shell: bash
         run: |
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          python3 ./generate.py -f ../../rustdesk/ -o . -e "../../rustdesk/${APP_NAME}.exe"
           popd
           mkdir -p ./Output
           mv ./target/release/rustdesk-portable-packer.exe ./Output/${OUTPUT_NAME}-${VERSION}-x86_64.exe
@@ -188,10 +201,9 @@ jobs:
       - name: Build MSI installer
         continue-on-error: true
         run: |
-          # L'outil MSI cherche <app-name>.exe dans le dossier : on copie et renomme.
-          $appName = (Select-String -Path supportdirect-kit/supportdirect.toml -Pattern '^name\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          # Le dossier contient déjà <app-name>.exe (voir l'étape de renommage).
+          $appName = $env:APP_NAME
           cp -r ./rustdesk ./rustdesk-msi
-          mv ./rustdesk-msi/rustdesk.exe "./rustdesk-msi/$appName.exe"
           pushd ./res/msi
           python preprocess.py --arp -d ../../rustdesk-msi --app-name $appName
           nuget restore msi.sln
