@@ -2,17 +2,29 @@
 #  SupportDirect - compilation du client Windows x64 (dérivé de
 #  .github/workflows/flutter-build.yml de RustDesk 1.5.1)
 #
-#  Lancement : onglet "Actions" du dépôt -> "SupportDirect Windows" -> Run workflow
-#  Résultat  : artefact "SupportDirect-windows-x64" contenant
+#  Lancement : automatique à chaque envoi sur master (ou onglet "Actions"
+#              -> "SupportDirect Windows" -> Run workflow)
+#  Résultat  : brouillon de version "supportdirect-<VERSION>" (invisible pour
+#              les clients) contenant
 #              SupportDirect-<version>-x86_64.exe (installeur auto-extractible)
 #              SupportDirect-<version>-x86_64.msi (pour déploiement silencieux)
+#  Publier   : tester le brouillon, puis "Publish release" sur GitHub.
+#              Voir supportdirect-kit/LISEZMOI.md.
 # ============================================================
 name: SupportDirect Windows
 
 on:
   workflow_dispatch:
   push:
-    tags: ["supportdirect-*"]
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+# Un nouvel envoi annule la fabrication précédente encore en cours.
+concurrency:
+  group: supportdirect-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -223,9 +235,25 @@ jobs:
           path: ./Output
           if-no-files-found: error
 
-      - name: Publish release (on tag only)
-        if: startsWith(github.ref, 'refs/tags/supportdirect-')
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
-        with:
-          name: SupportDirect ${{ env.VERSION }}
-          files: ./Output/*
+      # Brouillon : invisible pour les clients tant que personne n'a cliqué
+      # « Publish release ». Ce clic crée l'étiquette supportdirect-<VERSION> et
+      # place ces fichiers derrière le lien « latest », sans recompiler : le
+      # fichier publié est exactement celui qui a été testé. Une version déjà
+      # publiée n'est jamais touchée.
+      - name: Create draft release
+        if: github.ref == 'refs/heads/master'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="supportdirect-${VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+            echo "::warning::SupportDirect ${VERSION} est déjà publiée : augmentez VERSION en haut de ce fichier. Aucun brouillon créé ; les fichiers restent dans les artefacts de cette exécution."
+            exit 0
+          fi
+          for id in $(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${tag}\") | .id"); do
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
+          done
+          gh release create "${tag}" ./Output/* --draft --target "${GITHUB_SHA}" \
+            --title "SupportDirect ${VERSION}" \
+            --notes "Brouillon fabriqué automatiquement (commit ${GITHUB_SHA::7}). À tester avant de cliquer « Publish release »."
