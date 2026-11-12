@@ -11,6 +11,7 @@ Il modifie :
   - src/lang/*.rs                      (textes affichés "RustDesk" -> nom affiché)
   - flutter/lib/desktop/widgets/tabbar_widget.dart (titre de la barre)
   - flutter/windows/runner/Runner.rc   (propriétés du .exe)
+  - flutter/linux/my_application.cc    (icône et titre de la fenêtre Linux)
   - flutter/pubspec.yaml               (description)
   - icônes : res/*.png, res/icon.ico, res/tray-icon.ico,
              flutter/windows/runner/resources/app_icon.ico,
@@ -146,6 +147,24 @@ def patch_runner_rc(repo: Path, cfg: dict) -> None:
         t = sub_once(t, rf'^{k} = ".*"$', f'{k} = "{v}"', f"portable {k}")
     p.write_text(t, encoding="utf-8")
     print("  portable/Cargo.toml  OK  (propriétés de l'installeur)")
+
+
+# ---------------------------------------------------------------- fenêtre Linux
+def patch_linux_runner(repo: Path, cfg: dict) -> None:
+    """Icône et titre de la fenêtre sous Linux : le paquet installe l'icône sous
+    le nom <name> en minuscules (voir linux_deb.py), pas sous « rustdesk »."""
+    p = repo / "flutter/linux/my_application.cc"
+    low, display = cfg["app"]["name"].lower(), cfg["app"]["display_name"]
+    t = p.read_text(encoding="utf-8")
+    icon_new = f'gtk_icon_theme_load_icon(theme, "{low}",'
+    t2 = t.replace('gtk_icon_theme_load_icon(theme, "rustdesk",', icon_new)
+    for call in ("gtk_header_bar_set_title(header_bar, ", "gtk_window_set_title(window, "):
+        t2 = t2.replace(f'{call}"rustdesk")', f'{call}"{display}")')
+    if icon_new not in t2:
+        print("  my_application.cc    !!  icône de fenêtre non trouvée (non bloquant)")
+        return
+    p.write_text(t2, encoding="utf-8")
+    print("  my_application.cc    OK  (icône et titre de la fenêtre Linux)")
 
 
 # ---------------------------------------------------------------- icônes
@@ -336,6 +355,7 @@ def main() -> None:
     patch_lang_files(repo, cfg)
     patch_flutter(repo, cfg)
     patch_runner_rc(repo, cfg)
+    patch_linux_runner(repo, cfg)
     patch_icons(repo, cfg, kit_dir)
     patch_about(repo, cfg, kit_dir)
     print("Terminé.")

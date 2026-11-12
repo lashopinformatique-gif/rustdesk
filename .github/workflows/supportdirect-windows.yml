@@ -1,17 +1,18 @@
 # ============================================================
-#  SupportDirect - compilation du client Windows x64 (dérivé de
-#  .github/workflows/flutter-build.yml de RustDesk 1.5.1)
+#  SupportDirect - compilation des clients Windows x64 et Linux x64 (dérivé
+#  de .github/workflows/flutter-build.yml de RustDesk 1.5.1)
 #
 #  Lancement : automatique à chaque envoi sur master (ou onglet "Actions"
-#              -> "SupportDirect Windows" -> Run workflow)
+#              -> "SupportDirect" -> Run workflow)
 #  Résultat  : brouillon de version "supportdirect-<VERSION>" (invisible pour
 #              les clients) contenant
 #              SupportDirect-<version>-x86_64.exe (installeur auto-extractible)
 #              SupportDirect-<version>-x86_64.msi (pour déploiement silencieux)
+#              SupportDirect-<version>-x86_64.deb (Ubuntu, Debian, Mint...)
 #  Publier   : tester le brouillon, puis "Publish release" sur GitHub.
 #              Voir supportdirect-kit/LISEZMOI.md.
 # ============================================================
-name: SupportDirect Windows
+name: SupportDirect
 
 on:
   workflow_dispatch:
@@ -31,11 +32,12 @@ permissions:
 
 env:
   SCITER_RUST_VERSION: "1.75"
+  RUST_VERSION: "1.75"
   LLVM_VERSION: "15.0.6"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  VERSION: "1.5.4"
+  VERSION: "1.5.5"
   # Nom de fichier des installeurs produits (sans accent)
   OUTPUT_NAME: "SupportDirect"
 
@@ -224,10 +226,6 @@ jobs:
           mv $msi.FullName "../../Output/$env:OUTPUT_NAME-$env:VERSION-x86_64.msi"
           popd
 
-      - name: Write SHA256SUMS
-        shell: bash
-        run: cd ./Output && sha256sum *.exe *.msi > SHA256SUMS.txt && cat SHA256SUMS.txt
-
       - name: Upload SupportDirect installers
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -235,25 +233,233 @@ jobs:
           path: ./Output
           if-no-files-found: error
 
+  # ---------- Linux x64 (.deb) ----------
+  # Même recette que le job build-rustdesk-linux de flutter-build.yml (x86_64
+  # seulement), suivie de linux_deb.py qui met le paquet à la marque.
+  build-linux-x64:
+    name: SupportDirect Linux x64
+    needs: [generate-bridge]
+    runs-on: ubuntu-22.04
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo apt-get update -y
+          sudo apt-get install -y nasm
+
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      # ---------- Personnalisation SupportDirect ----------
+      - name: Apply SupportDirect branding
+        run: |
+          pip3 install pillow tomli
+          python3 supportdirect-kit/rebrand.py --config supportdirect-kit/supportdirect.toml --repo .
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
+        with:
+          swap-size-gb: 12
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ env.TARGET }}
+          components: "rustfmt"
+
+      - name: Save Rust toolchain version
+        run: |
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
+
+      - name: Disable rust bridge build
+        run: |
+          # only build cdylib
+          sed -i  "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
+
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        shell: bash
+        run: |
+          sudo apt install -y libva-dev && apt show libva-dev
+          if ! $VCPKG_ROOT/vcpkg install --triplet x64-linux --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do echo "$_1:"; cat "$_1"; done
+            exit 1
+          fi
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge-artifact
+          path: ./
+
+      # Compilé dans un conteneur Ubuntu 18.04 pour que le programme tourne
+      # aussi sur les distributions plus anciennes (glibc).
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # no release tag; commit 2026-05-26
+        name: Build SupportDirect
+        with:
+          arch: x86_64
+          distro: ubuntu18.04
+          setup: |
+            ls -l "${PWD}"
+            ls -l /opt/artifacts/vcpkg/installed
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+            --volume "/opt/artifacts:/opt/artifacts"
+          shell: /bin/bash
+          install: |
+            apt-get update -y
+            apt-get install -y \
+               build-essential \
+               clang \
+               cmake \
+               curl \
+               gcc \
+               git \
+               g++ \
+               libayatana-appindicator3-dev \
+               libasound2-dev \
+               libclang-10-dev \
+               libgstreamer1.0-dev \
+               libgstreamer-plugins-base1.0-dev \
+               libgtk-3-dev \
+               libpulse-dev \
+               libva-dev \
+               libxcb-randr0-dev \
+               libxcb-shape0-dev \
+               libxcb-xfixes0-dev \
+               libxdo-dev \
+               libxfixes-dev \
+               llvm-10-dev \
+               nasm \
+               ninja-build \
+               pkg-config \
+               tree \
+               python3 \
+               rpm \
+               unzip \
+               wget \
+               xz-utils \
+               libssl-dev
+            # we have libopus compiled by us.
+            apt-get remove -y libopus-dev || true
+          run: |
+            # disable git safe.directory
+            git config --global --add safe.directory "*"
+            # rust
+            pushd /opt
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{ env.RUST_TOOLCHAIN_VERSION }}-${{ env.TARGET }}.tar.gz
+            tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
+            cd rust-${{ env.RUST_TOOLCHAIN_VERSION }}-${{ env.TARGET }} && ./install.sh
+            rm -rf rust-${{ env.RUST_TOOLCHAIN_VERSION }}-${{ env.TARGET }}
+            mkdir -p ~/.cargo/
+            echo """
+              [source.crates-io]
+              registry = 'https://github.com/rust-lang/crates.io-index'
+            """ > ~/.cargo/config
+            # start build
+            pushd /workspace
+            export VCPKG_ROOT=/opt/artifacts/vcpkg
+            cargo build --locked --lib --features hwcodec,flutter,unix-file-copy-paste --release
+            rm -rf target/release/deps target/release/build
+            rm -rf ~/.cargo
+
+            # Setup Flutter
+            export PATH=/opt/flutter/bin:$PATH
+            pushd /opt
+            wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            tar xf flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            flutter doctor -v
+            pushd /opt/flutter
+            git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+            popd
+
+            # build flutter
+            pushd /workspace
+            export CARGO_INCREMENTAL=0
+            export DEB_ARCH=amd64
+            python3 ./build.py --flutter --skip-cargo
+            ls -l rustdesk-*.deb
+
+      # Le paquet sort sous le nom « rustdesk » : linux_deb.py renomme tout
+      # (programme, service, lanceurs, icônes) et refuse de continuer si le
+      # programme compilé ne contient pas le serveur et la clé de SupportDirect.
+      - name: Rebrand the .deb package
+        run: |
+          deb=$(ls rustdesk-*.deb | head -1)
+          python3 supportdirect-kit/linux_deb.py --config supportdirect-kit/supportdirect.toml \
+            --deb "$deb" --version "${VERSION}" \
+            --out "./Output/${OUTPUT_NAME}-${VERSION}-x86_64.deb"
+          dpkg-deb -I ./Output/*.deb
+
+      - name: Upload SupportDirect package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SupportDirect-linux-x64
+          path: ./Output
+          if-no-files-found: error
+
+  # ---------- Brouillon de version ----------
+  # Créé dès que la version Windows est prête. Si la fabrication Linux échoue,
+  # le brouillon sort quand même, sans le .deb, et le signale dans ses notes.
+  draft-release:
+    name: Brouillon de version
+    needs: [build-windows-x64, build-linux-x64]
+    if: ${{ !cancelled() && needs.build-windows-x64.result == 'success' && github.ref == 'refs/heads/master' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: SupportDirect-*-x64
+          path: ./Output
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        run: cd ./Output && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+
       # Brouillon : invisible pour les clients tant que personne n'a cliqué
       # « Publish release ». Ce clic crée l'étiquette supportdirect-<VERSION> et
       # place ces fichiers derrière le lien « latest », sans recompiler : le
       # fichier publié est exactement celui qui a été testé. Une version déjà
       # publiée n'est jamais touchée.
       - name: Create draft release
-        if: github.ref == 'refs/heads/master'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="supportdirect-${VERSION}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+          if git ls-remote --exit-code --tags "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" "refs/tags/${tag}" >/dev/null; then
             echo "::warning::SupportDirect ${VERSION} est déjà publiée : augmentez VERSION en haut de ce fichier. Aucun brouillon créé ; les fichiers restent dans les artefacts de cette exécution."
             exit 0
           fi
           for id in $(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq ".[] | select(.draft and .tag_name == \"${tag}\") | .id"); do
             gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
           done
+          notes="Brouillon fabriqué automatiquement (commit ${GITHUB_SHA::7}). À tester avant de cliquer « Publish release »."
+          if ! ls ./Output/*.deb >/dev/null 2>&1; then
+            notes="${notes} ATTENTION : la fabrication Linux a échoué, ce brouillon ne contient pas le .deb."
+            echo "::warning::Fabrication Linux en échec : brouillon créé sans le .deb."
+          fi
           gh release create "${tag}" ./Output/* --draft --target "${GITHUB_SHA}" \
-            --title "SupportDirect ${VERSION}" \
-            --notes "Brouillon fabriqué automatiquement (commit ${GITHUB_SHA::7}). À tester avant de cliquer « Publish release »."
+            --repo "${GITHUB_REPOSITORY}" --title "SupportDirect ${VERSION}" --notes "${notes}"
